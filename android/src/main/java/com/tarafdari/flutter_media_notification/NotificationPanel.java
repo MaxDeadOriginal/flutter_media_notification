@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.BitmapFactory;
 import android.os.Build;
@@ -22,9 +23,17 @@ public class NotificationPanel extends Service {
     private static final String CHANNEL_NAME = "Foreground Service Notification Channel";
     private static final String MEDIA_SESSION_TAG = "flutter_media_notification/mediasession";
 
+    private NotificationManager mNotificationManager;
+
     @Override
     public void onCreate() {
         super.onCreate();
+        mNotificationManager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            this.createNotificationChannel();
+        Notification notification = getNotification("Author", "Title", false);
+        startForeground(NOTIFICATION_ID, notification);
+        System.out.println("[!][NotPan][onCreate]");
     }
 
     @Override
@@ -33,12 +42,15 @@ public class NotificationPanel extends Service {
         String title = intent.getStringExtra("title");
         String author = intent.getStringExtra("author");
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-            createNotificationChannel();
+        Notification notification = getNotification(author, title, isPlaying);
 
+        assert mNotificationManager != null;
+        mNotificationManager.notify(NOTIFICATION_ID, notification);
+        return START_NOT_STICKY;
+    }
 
+    private Notification getNotification(String author, String title, boolean isPlaying) {
         MediaSessionCompat mediaSession = new MediaSessionCompat(this, MEDIA_SESSION_TAG);
-
 
         int iconPlayPause = R.drawable.baseline_play_arrow_black_48;
         String titlePlayPause = "pause";
@@ -72,7 +84,7 @@ public class NotificationPanel extends Service {
 //        MediaButtonReceiver.handleIntent(mediaSession, selectIntent);
 
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setOngoing(true)
+                .setOngoing(isPlaying)
                 .addAction(R.drawable.baseline_skip_previous_black_48, "prev", pendingPrevIntent)
                 .addAction(iconPlayPause, titlePlayPause, pendingToggleIntent)
                 .addAction(R.drawable.baseline_skip_next_black_48, "next", pendingNextIntent)
@@ -80,6 +92,7 @@ public class NotificationPanel extends Service {
                         .setShowActionsInCompactView(0, 1,2)
                         .setShowCancelButton(true)
                         .setMediaSession(mediaSession.getSessionToken()))
+                .setLargeIcon(BitmapFactory.decodeResource(this.getResources(), R.drawable.ic_stat_music_note))
                 .setSmallIcon(R.drawable.ic_stat_music_note)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setVibrate(new long[]{0L})
@@ -87,20 +100,11 @@ public class NotificationPanel extends Service {
                 .setContentTitle(title)
                 .setContentText(author)
                 .setSubText(title)
-                .setContentIntent(selectPendingIntent)
-                .setLargeIcon(BitmapFactory.decodeResource(this.getResources(), R.drawable.ic_stat_music_note));
+                .setContentIntent(selectPendingIntent);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             notificationBuilder.setCategory(Notification.CATEGORY_SERVICE);
         }
-
-        Notification notification = notificationBuilder.build();
-
-        startForeground(NOTIFICATION_ID, notification);
-        if(!isPlaying) {
-            stopForeground(false);
-        }
-
-        return START_NOT_STICKY;
+        return notificationBuilder.build();
     }
 
 
@@ -127,14 +131,17 @@ public class NotificationPanel extends Service {
         serviceChannel.setShowBadge(false);
         serviceChannel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
 
-        NotificationManager manager = getSystemService(NotificationManager.class);
-        assert manager != null;
-        manager.createNotificationChannel(serviceChannel);
+        assert mNotificationManager != null;
+        mNotificationManager.createNotificationChannel(serviceChannel);
     }
 
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
+        assert mNotificationManager != null;
+        mNotificationManager.cancel(NOTIFICATION_ID);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            mNotificationManager.deleteNotificationChannel(CHANNEL_ID);
         stopForeground(true);
     }
 }
